@@ -1,44 +1,57 @@
-import dotenv from 'dotenv';
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { getOrCreateAssociatedTokenAccount, mintTo, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import bs58 from 'bs58';
+import { getOrCreateAssociatedTokenAccount, mintTo, burn, transfer, getAssociatedTokenAddress, createBurnCheckedInstruction} from "@solana/spl-token";
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, sendAndConfirmRawTransaction, sendAndConfirmTransaction, SystemProgram, Transaction } from "@solana/web3.js";
+import { PRIVATE_KEY, PUBLIC_KEY, TOKEN_MINT_ADDRESS } from "./address"; 
 
-dotenv.config();
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY; 
-const PUBLIC_KEY = new PublicKey(process.env.PUBLIC_KEY);
-const TOKEN_MINT_ADDRESS = new PublicKey("8DXfRo518bwFjAAieg23bpAH7mV7FUU47DsgyHJaAhph");
-
-const connection = new Connection('http://api.devnet.solana.com');
+const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+const payer = Keypair.fromSecretKey(Uint8Array.from(PRIVATE_KEY));
+const mintAddress = new PublicKey(TOKEN_MINT_ADDRESS);
+const LST_RATE = 960000000;      // 1 SOL = 0.96 HSOL
+export const TOKEN_DECIMALS = 1000000000;
 
 export const mintTokens = async (toAddress, fromAddress, amount) => {
-    try {
-        const decodedPrivateKey = bs58.decode(PRIVATE_KEY);
-        const payer = Keypair.fromSecretKey(decodedPrivateKey);
-        
-        console.log('Payer:', payer); 
+    console.log(fromAddress);
+    console.log(toAddress);
+    console.log(payer.publicKey);
+    const to = new PublicKey(toAddress);
+    const from = new PublicKey(fromAddress);
+    const amt = LST_RATE*(amount/LAMPORTS_PER_SOL);   //send 0.96 * x custom-SOL
 
-        const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
-            connection,
-            payer,
-            TOKEN_MINT_ADDRESS,
-            new PublicKey(toAddress)
-        );
+    const asscociatedAccount = await getOrCreateAssociatedTokenAccount(connection, payer, mintAddress, to);
+    console.log(asscociatedAccount.address);
+    await mintTo(connection, payer, mintAddress, asscociatedAccount.address, payer, amt);
+    console.log(`Minted ${amt} tokens to ${to}`);
+}
 
-        const mintAmount = BigInt(amount * 10 ** 9);
-        
-        await mintTo({
-            connection,
-            payer,
-            mint: TOKEN_MINT_ADDRESS,
-            destination: recipientTokenAccount.address,
-            authority: payer,  // Should be correct
-            amount: mintAmount,
-            multiSigners: [],
-            programId: TOKEN_PROGRAM_ID,
-        });
-    } catch (error) {
-        console.error('Error minting tokens:', error);
-        throw error; 
-    }
-};
+export const burnTokens = async (toAddress, fromAddress, burnAmount) => {
+    const associatedTokenAccount = await getAssociatedTokenAddress(mintAddress, payer.publicKey);
+    console.log(associatedTokenAccount);
+    const transaction = new Transaction().add(
+        createBurnCheckedInstruction(
+            associatedTokenAccount,
+            mintAddress,
+            payer.publicKey,
+            burnAmount,
+            9
+        )
+    );
+
+    const txnSignature = await sendAndConfirmTransaction(connection, transaction, [payer]);
+    console.log(`Burned ${burnAmount} from ${fromAddress}: ${txnSignature}`);
+}
+
+export const sendNativeTokens = async (toAddress, fromAddress, amount) => {
+    const to = new PublicKey(toAddress);
+    const from = new PublicKey(fromAddress);
+    const solAmount = (amount/LST_RATE);
+    const transaction = new Transaction().add(
+        SystemProgram.transfer({
+            fromPubkey: from,
+            toPubkey: to,
+            lamports: solAmount * LAMPORTS_PER_SOL
+        })
+    );
+    const txnSignature = await sendAndConfirmTransaction(connection, transaction, [payer]);
+
+    console.log(`Sent ${solAmount} SOLS to ${to}: ${txnSignature}`);
+}

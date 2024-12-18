@@ -1,9 +1,0 @@
-sagar@sagar-Inspiron-15-3511:~$ spl-token create-token
-Creating token 8DXfRo518bwFjAAieg23bpAH7mV7FUU47DsgyHJaAhph under program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-
-Address:  8DXfRo518bwFjAAieg23bpAH7mV7FUU47DsgyHJaAhph
-Decimals:  9
-
-Signature: 44jog3GdxtAiXbqbmvSGV5XHA8vSWAPJk8qU89NxDvBcKqnBEdESEPGaHW9XWsC7qyx6MpZBkfMaWHmDm1iugMdQ
-
-sagar@sagar-Inspiron-15-3511:~$ 

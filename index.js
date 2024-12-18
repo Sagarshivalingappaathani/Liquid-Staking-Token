@@ -1,33 +1,52 @@
+require('dotenv').config();
 import express from 'express';
-import {mintTokens } from './mintTokens.js';
-import { PRIVATE_KEY, PUBLIC_KEY, TOKEN_MINT_ADDRESS } from './address.js';
+import { burnTokens, mintTokens, sendNativeTokens } from './mintTokens';
+import { LAMPORTS_PER_SOL, Connection, Keypair} from '@solana/web3.js';
+import { PRIVATE_KEY, PUBLIC_KEY, TOKEN_MINT_ADDRESS } from './address';
+import { convertToTokenDecimalUnit } from './util';
+
 const app = express();
 
-const myAddress = PUBLIC_KEY;
+const connection = new Connection("https://api.devnet.solana.com/", "confirmed");
 
-const heliusRespone = {
-  "nativeTransfers": [{
-    "amount": 10000,
-    "fromUserAccount": "CAzNaknduYmc2pBGtoaaUafc2Kw258yDnf91smVhCwSu",
-    "toUserAccount": "sREtZDzfJBvnerJ64UFLESHroXWxnT362jm9ao5GyX1"
-  }]
-}
 
-app.post('/helius', async (req, res) => {
-  console.log(PUBLIC_KEY)
-  const transaction = heliusRespone.nativeTransfers.find(x => x.toUserAccount == myAddress)
-  console.log(transaction)
-  if (!transaction) {
-    res.json({ message: "processed" });
-    return;
-  }
+app.post('/helius', async(req, res) => {
+    const description = req.body.description.split(" ");
+    const type = description[3];
+    const recieverAccount = description[5];
+    let fromAddress, toAddress, amount;
 
-  const fromAddress = transaction.fromUserAccount;
-  const toAddress = transaction.toUserAccount;
-  const amount = transaction.amount;
-  const type = "received_native_sol";
-  await mintTokens(fromAddress, toAddress, amount)
-  res.send('Transaction successful');
+    if(type == "SOL"){
+      fromAddress = (req.body.nativeTransfers[0]).fromUserAccount;
+      toAddress = (req.body.nativeTransfers[0] ).toUserAccount;
+      amount = (req.body.nativeTransfers[0] ).amount;
+      if(toAddress != PUBLIC_KEY){
+        res.json({
+          message: "Another event happened"
+        });
+      }
+    }
+    else if(type == TOKEN_MINT_ADDRESS){
+      fromAddress = (req.body.tokenTransfers[0] ).fromUserAccount;
+      toAddress = (req.body.tokenTransfers[0] ).toUserAccount;
+      amount = (req.body.tokenTransfers[0]).tokenAmount;
+    }
+    else{
+      res.json({
+        message:"Invalid token sent"
+      });
+    }
+    
+    if (type === "SOL") {
+        await mintTokens(fromAddress, toAddress, amount);
+    } else if(type == TOKEN_MINT_ADDRESS) {
+        const tokenAmount = convertToTokenDecimalUnit(amount);
+        console.log(tokenAmount);
+        await burnTokens(fromAddress, toAddress, tokenAmount);
+        await sendNativeTokens(fromAddress, toAddress, tokenAmount);
+    }
+
+    res.send('Transaction successful');
 });
 
 app.listen(3000, () => {
